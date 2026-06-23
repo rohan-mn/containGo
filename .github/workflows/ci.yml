@@ -1,0 +1,58 @@
+name: ContainGo CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test -count=1 ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Test OPA policy
+        run: |
+          docker run --rm \
+            --volume "$PWD/policies:/policies:ro" \
+            openpolicyagent/opa:1.17.1-static \
+            test /policies --verbose
+
+      - name: Build executables
+        run: |
+          go build ./cmd/protected-api
+          go build ./cmd/api-gateway
+          go build ./cmd/control-plane
+          go build ./cmd/order-client
+          go build ./cmd/report-client
+          go build ./cmd/dashboard
+          go build ./cmd/democtl

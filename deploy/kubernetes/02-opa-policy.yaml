@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: containgo-opa-policy
+  namespace: containgo
+data:
+  containgo.rego: "package containgo.authz\n\n# The default result is always deny.\n\
+    default decision := {\n\t\"allowed\": false,\n\t\"reason\": \"workload is not\
+    \ permitted to access this endpoint\",\n}\n\n# Phase 4 endpoint permissions.\n\
+    #\n# Additional workloads and routes can be added later without changing\n# the\
+    \ protected API binary.\nallowed_paths := {\n\t\"spiffe://containgo.local/ns/containgo/sa/order-client\"\
+    : \"/api/orders\",\n\t\"spiffe://containgo.local/ns/containgo/sa/report-client\"\
+    : \"/api/reports\",\n}\n\n# A workload is quarantined when the runtime OPA data\
+    \ document contains:\n#\n# data.containgo.quarantined[spiffe_id] == true\nquarantined\
+    \ if {\n\tdata.containgo.quarantined[input.spiffe_id] == true\n}\n\n# A route\
+    \ is allowed only when:\n#\n# - the HTTP method is GET\n# - the workload is present\
+    \ in allowed_paths\n# - the requested path exactly matches its configured route\n\
+    route_allowed if {\n\tinput.method == \"GET\"\n\tallowed_paths[input.spiffe_id]\
+    \ == input.path\n}\n\n# Quarantine overrides every normal route permission.\n\
+    decision := {\n\t\"allowed\": false,\n\t\"reason\": \"workload is quarantined\"\
+    ,\n} if {\n\tquarantined\n}\n\n# A non-quarantined workload may access only its\
+    \ assigned route.\ndecision := {\n\t\"allowed\": true,\n\t\"reason\": \"OPA policy\
+    \ allowed the request\",\n} if {\n\tnot quarantined\n\troute_allowed\n}"

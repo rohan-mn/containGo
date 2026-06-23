@@ -1,0 +1,331 @@
+{{define "top"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · ContainGo</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script defer src="/assets/app.js"></script>
+</head>
+<body data-auto-refresh="{{.AutoRefresh}}" data-refresh-seconds="{{.RefreshSeconds}}">
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="/" aria-label="ContainGo dashboard home">
+        <span class="brand-mark">CG</span>
+        <span>
+          <strong>ContainGo</strong>
+          <small>Zero-trust workload quarantine</small>
+        </span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="/">Overview</a>
+        <a href="/demo">Demo console</a>
+        <a href="/architecture">Architecture</a>
+        <a href="/audit">Audit</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">Security operations</p>
+        <h1>{{.Title}}</h1>
+      </div>
+      <div class="refresh-status">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="refresh-label">Live data</span>
+      </div>
+    </div>
+    {{if .Notice}}<div class="alert alert-success">{{.Notice}}</div>{{end}}
+    {{if .Error}}<div class="alert alert-error">{{.Error}}</div>{{end}}
+{{end}}
+
+{{define "bottom"}}
+  </main>
+  <footer class="site-footer">
+    <div class="shell footer-inner">
+      <span>ContainGo zero-trust demonstration environment</span>
+      <span>Updated {{formatTime .GeneratedAt}}</span>
+    </div>
+  </footer>
+</body>
+</html>
+{{end}}
+
+{{define "index"}}
+{{template "top" .}}
+<section class="hero-banner">
+  <div>
+    <p class="eyebrow light">End-to-end showcase</p>
+    <h2>Identity-aware prevention, detection and automated containment</h2>
+    <p>Demonstrate SPIRE workload identity, mTLS, OPA authorization, risk scoring, quarantine, evidence, release and audit history from one screen.</p>
+  </div>
+  <a class="button button-light" href="/demo">Open guided demo</a>
+</section>
+
+<section class="metric-grid" aria-label="System summary">
+  <article class="metric-card"><span>Total workloads</span><strong>{{.Summary.TotalWorkloads}}</strong></article>
+  <article class="metric-card"><span>Active</span><strong>{{.Summary.Active}}</strong></article>
+  <article class="metric-card danger"><span>Quarantined</span><strong>{{.Summary.Quarantined}}</strong></article>
+  <article class="metric-card"><span>Total risk</span><strong>{{.Summary.TotalRisk}}</strong></article>
+  <article class="metric-card"><span>Denied requests</span><strong>{{.Summary.DeniedRequests}}</strong></article>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">Current state</p><h2>Registered SPIFFE workloads</h2></div>
+    <a class="text-link" href="/architecture">View trust relationships →</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Workload</th><th>Status</th><th>Risk score</th><th>Denied</th><th>Last seen</th><th></th></tr></thead>
+      <tbody>
+      {{range .Workloads}}
+        <tr>
+          <td><strong>{{.Name}}</strong><code>{{.SPIFFEID}}</code></td>
+          <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
+          <td class="risk-cell"><strong>{{.RiskScore}}</strong><progress max="125" value="{{.RiskScore}}">{{.RiskScore}}</progress></td>
+          <td>{{.DeniedRequests}}</td>
+          <td>{{formatTimePtr .LastSeenAt}}</td>
+          <td><a class="button button-secondary" href="/workloads/{{.Name}}">Inspect</a></td>
+        </tr>
+      {{else}}
+        <tr><td colspan="6" class="empty">No workloads returned by the Control Plane.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">Immutable history</p><h2>Recent audit actions</h2></div>
+    <a class="text-link" href="/audit">View complete timeline →</a>
+  </div>
+  {{template "audit-table" .RecentAudit}}
+</section>
+{{template "bottom" .}}
+{{end}}
+
+{{define "demo"}}
+{{template "top" .}}
+<section class="demo-hero stage-{{.State.Stage}}">
+  <div>
+    <p class="eyebrow light">Current demonstration stage</p>
+    <div class="hero-title-row">
+      <h2>{{.State.StageLabel}}</h2>
+      <span class="badge badge-inverse">Mode: {{.State.Mode.Mode}}</span>
+    </div>
+    <p>Report Client is <strong>{{.State.ReportClient.Status}}</strong> with risk <strong>{{.State.ReportClient.RiskScore}}</strong>. Order Client remains <strong>{{.State.OrderClient.Status}}</strong>.</p>
+  </div>
+  <div class="demo-hero-score">
+    <span>Risk score</span>
+    <strong>{{.State.ReportClient.RiskScore}}</strong>
+    <small>Quarantine threshold: 70</small>
+  </div>
+</section>
+
+<section class="demo-layout">
+  <article class="panel demo-controls">
+    <div class="panel-heading"><div><p class="eyebrow">Live controls</p><h2>Drive the scenario</h2></div></div>
+    <div class="control-grid">
+      <form method="post" action="/demo/mode">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="mode" value="normal">
+        <button class="control-card normal" type="submit"><strong>Normal</strong><span>Allowed report traffic</span></button>
+      </form>
+      <form method="post" action="/demo/mode">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="mode" value="rapid">
+        <button class="control-card rapid" type="submit"><strong>Rapid burst</strong><span>Trigger rate anomaly</span></button>
+      </form>
+      <form method="post" action="/demo/mode" data-confirm="Start attack mode and attempt sensitive endpoints?">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="mode" value="attack">
+        <button class="control-card attack" type="submit"><strong>Attack</strong><span>Payment and admin endpoints</span></button>
+      </form>
+      <form method="post" action="/demo/mode">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="mode" value="paused">
+        <button class="control-card pause" type="submit"><strong>Pause</strong><span>Stop workload requests</span></button>
+      </form>
+    </div>
+    <div class="action-strip">
+      {{if isQuarantined .State.ReportClient}}
+      <form method="post" action="/demo/release" data-confirm="Return to normal mode and release the Report Client from quarantine?">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="button button-danger" type="submit">Release quarantined workload</button>
+      </form>
+      {{end}}
+      <form method="post" action="/demo/reset" data-confirm="Reset mode, risk and in-memory request counters for a clean demonstration?">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="button button-secondary" type="submit">Reset demo</button>
+      </form>
+      <a class="button button-secondary" href="/workloads/report-client">Full evidence view</a>
+    </div>
+  </article>
+
+  <aside class="panel demo-script">
+    <div class="panel-heading"><div><p class="eyebrow">Presenter flow</p><h2>Five-step story</h2></div></div>
+    <ol class="step-list">
+      {{range .Steps}}
+      <li class="step-{{.State}}"><span>{{.Number}}</span><div><strong>{{.Title}}</strong><p>{{.Description}}</p></div></li>
+      {{end}}
+    </ol>
+  </aside>
+</section>
+
+<section class="metric-grid compact" aria-label="Live demonstration metrics">
+  <article class="metric-card"><span>Successful requests</span><strong>{{.State.Mode.Successful}}</strong></article>
+  <article class="metric-card danger"><span>Forbidden requests</span><strong>{{.State.Mode.Forbidden}}</strong></article>
+  <article class="metric-card"><span>Transport failures</span><strong>{{.State.Mode.Failures}}</strong></article>
+  <article class="metric-card"><span>Incident evidence</span><strong>{{.State.EvidencePoints}}</strong></article>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">Request path</p><h2>Live zero-trust flow</h2></div></div>
+  <div class="flow-diagram compact-flow">
+    <div class="flow-node client-node"><small>SPIFFE workload</small><strong>Report Client</strong><code>{{.State.ReportClient.SPIFFEID}}</code></div>
+    <span class="flow-arrow">mTLS →</span>
+    <div class="flow-node"><small>Identity enforcement</small><strong>API Gateway</strong><span>Extracts verified SPIFFE ID</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node policy-node"><small>Policy decision</small><strong>OPA</strong><span>Allow or deny</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node"><small>Protected service</small><strong>Protected API</strong><span>Business endpoint</span></div>
+    <span class="flow-arrow">events →</span>
+    <div class="flow-node control-node"><small>Detection and response</small><strong>Control Plane</strong><span>Risk, incident, quarantine</span></div>
+  </div>
+</section>
+
+<section class="two-column">
+  <article class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">OPA authorization</p><h2>Policy matrix</h2></div></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Identity</th><th>Allowed</th><th>Denied</th></tr></thead><tbody>
+      {{range .PolicyMatrix}}<tr><td><strong>{{.Workload}}</strong></td><td>{{.Allowed}}</td><td>{{.Denied}}</td></tr>{{end}}
+      </tbody></table>
+    </div>
+  </article>
+  <article class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Postman</p><h2>Demo API facade</h2></div></div>
+    <div class="panel-body">
+      <p>Postman calls the localhost Dashboard facade. The Dashboard then uses its own SPIFFE X.509-SVID for backend mTLS.</p>
+      <code class="endpoint">GET /demo-api/v1/state</code>
+      <code class="endpoint">POST /demo-api/v1/mode</code>
+      <code class="endpoint">POST /demo-api/v1/release</code>
+      <code class="endpoint">POST /demo-api/v1/reset</code>
+      <p class="section-help flush">Import the supplied collection and generated local environment. Every request uses <code>X-ContainGo-Demo-Token</code>.</p>
+    </div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">Live telemetry</p><h2>Recent Report Client security events</h2></div><span class="badge badge-neutral">Auto-refresh: 5 seconds</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Request</th><th>Decision</th><th>HTTP</th><th>Risk points</th></tr></thead>
+      <tbody>
+      {{range .State.Events}}
+        <tr>
+          <td>{{formatTime .Event.OccurredAt}}</td>
+          <td><strong>{{.Event.Method}}</strong> <code>{{.Event.Path}}</code><small>{{.Event.RequestID}}</small></td>
+          <td><span class="badge {{if eq .Event.Decision "deny"}}badge-danger{{else}}badge-success{{end}}">{{.Event.Decision}}</span></td>
+          <td>{{.Event.StatusCode}}</td>
+          <td>{{eventPoints .}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="5" class="empty">No Report Client events recorded yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">Evidence and recovery</p><h2>Incident history</h2></div></div>
+  <div class="incident-list">
+  {{range .State.Incidents}}
+    <article class="incident-card">
+      <div class="incident-heading"><div><strong>Incident #{{.ID}}</strong><span class="badge {{if eq .Status "open"}}badge-danger{{else}}badge-neutral{{end}}">{{.Status}}</span></div><span>{{formatTime .QuarantinedAt}}</span></div>
+      <div class="incident-metrics"><span>Quarantine score <strong>{{.ScoreAtQuarantine}}</strong></span><span>Evidence total <strong>{{incidentPoints .}}</strong></span>{{if .ReleasedAt}}<span>Released <strong>{{formatTimePtr .ReleasedAt}}</strong></span>{{end}}</div>
+      <ul class="reason-list">{{range .Reasons}}<li><span class="points">+{{.Points}}</span><div><strong>{{.Rule}}</strong><p>{{.Reason}}</p></div></li>{{end}}</ul>
+    </article>
+  {{else}}<p class="empty">Run attack mode to create the first incident.</p>{{end}}
+  </div>
+</section>
+{{template "bottom" .}}
+{{end}}
+
+{{define "architecture"}}
+{{template "top" .}}
+<section class="architecture-intro">
+  <div><p class="eyebrow">Design principle</p><h2>No workload is trusted because of its network location</h2><p>Identity is issued by SPIRE, authenticated with mTLS, authorized by OPA and continuously evaluated by the Control Plane.</p></div>
+  <a class="button" href="/demo">Run the live demonstration</a>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">System topology</p><h2>ContainGo component flow</h2></div></div>
+  <div class="architecture-grid">
+    <div class="architecture-lane"><h3>Workloads</h3><div class="arch-node">Order Client<small>GET /api/orders</small></div><div class="arch-node">Report Client<small>Normal, rapid and attack modes</small></div></div>
+    <div class="architecture-connector">SPIFFE mTLS<br>→</div>
+    <div class="architecture-lane"><h3>Enforcement</h3><div class="arch-node featured">API Gateway<small>Peer identity + reverse proxy</small></div><div class="arch-node">OPA sidecar<small>Identity and route policy</small></div></div>
+    <div class="architecture-connector">authorized<br>→</div>
+    <div class="architecture-lane"><h3>Application</h3><div class="arch-node">Protected API<small>Orders, reports and sensitive routes</small></div></div>
+    <div class="architecture-connector">security events<br>→</div>
+    <div class="architecture-lane"><h3>Detection and response</h3><div class="arch-node featured">Control Plane<small>Risk, quarantine, release</small></div><div class="arch-node">SQLite<small>Events, incidents and audit</small></div><div class="arch-node">Dashboard / democtl<small>Authenticated administration</small></div></div>
+  </div>
+  <div class="spire-foundation"><strong>SPIRE trust foundation</strong><span>Seven X.509-SVID workload identities · 30-minute TTL · automatic rotation</span></div>
+</section>
+
+<section class="security-grid">
+  <article class="security-card"><span>01</span><h3>Credentialless identity</h3><p>No application private keys or static client certificates are stored in containers.</p></article>
+  <article class="security-card"><span>02</span><h3>Exact peer authorization</h3><p>Each internal TLS connection authorizes the expected SPIFFE ID, not merely a trusted CA.</p></article>
+  <article class="security-card"><span>03</span><h3>Policy as code</h3><p>OPA determines whether a workload identity may call a specific method and path.</p></article>
+  <article class="security-card"><span>04</span><h3>Behavioral containment</h3><p>Denied and anomalous requests contribute risk; the Control Plane automatically quarantines at 70.</p></article>
+  <article class="security-card"><span>05</span><h3>Network isolation</h3><p>Default-deny NetworkPolicies permit only required pod-to-pod communication paths.</p></article>
+  <article class="security-card"><span>06</span><h3>Forensic evidence</h3><p>SQLite retains event contributions, complete incident reasons and administrator audit records.</p></article>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">Live registry</p><h2>Current SPIFFE identities</h2></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Workload</th><th>SPIFFE ID</th><th>Control-plane state</th></tr></thead><tbody>
+  {{range .Workloads}}<tr><td><strong>{{.Name}}</strong></td><td><code class="inline-code">{{.SPIFFEID}}</code></td><td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td></tr>{{end}}
+  </tbody></table></div>
+</section>
+{{template "bottom" .}}
+{{end}}
+
+{{define "workload"}}
+{{template "top" .}}
+<div class="breadcrumb"><a href="/">Overview</a><span>/</span><span>{{.Workload.Name}}</span></div>
+<section class="workload-hero">
+  <div><div class="hero-title-row"><h2>{{.Workload.Name}}</h2><span class="badge {{statusClass .Workload.Status}}">{{.Workload.Status}}</span></div><code>{{.Workload.SPIFFEID}}</code></div>
+  <div class="actions">
+    {{if isQuarantined .Workload}}<form method="post" action="/workloads/{{.Workload.Name}}/release" data-confirm="Release this workload and remove its OPA quarantine entry?"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="button button-danger" type="submit">Release workload</button></form>
+    {{else if gt .Workload.RiskScore 0}}<form method="post" action="/workloads/{{.Workload.Name}}/reset-risk" data-confirm="Reset this active workload's risk score and rolling request state?"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="button" type="submit">Reset risk</button></form>{{end}}
+  </div>
+</section>
+<section class="metric-grid compact" aria-label="Workload summary"><article class="metric-card"><span>Risk score</span><strong>{{.Workload.RiskScore}}</strong></article><article class="metric-card"><span>Denied requests</span><strong>{{.Workload.DeniedRequests}}</strong></article><article class="metric-card"><span>Last seen</span><strong class="metric-time">{{formatTimePtr .Workload.LastSeenAt}}</strong></article><article class="metric-card"><span>Quarantined at</span><strong class="metric-time">{{formatTimePtr .Workload.QuarantinedAt}}</strong></article></section>
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Risk evidence</p><h2>Recent contributing rules</h2></div></div><p class="section-help">Every contribution is persisted and used to explain the current risk cycle.</p><div class="table-wrap"><table><thead><tr><th>Time</th><th>Path</th><th>Rule</th><th>Points</th><th>Reason</th></tr></thead><tbody>{{range .Evidence}}<tr><td>{{formatTime .OccurredAt}}</td><td><code>{{.Path}}</code><small>{{.RequestID}}</small></td><td>{{.Rule}}</td><td><span class="points">+{{.Points}}</span></td><td>{{.Reason}}</td></tr>{{else}}<tr><td colspan="5" class="empty">No recent risk contributions.</td></tr>{{end}}</tbody></table></div></section>
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Quarantine lifecycle</p><h2>Incident timeline</h2></div></div><div class="incident-list">{{range .Incidents}}<article class="incident-card"><div class="incident-heading"><div><strong>Incident #{{.ID}}</strong><span class="badge {{if eq .Status "open"}}badge-danger{{else}}badge-neutral{{end}}">{{.Status}}</span></div><span>{{formatTime .QuarantinedAt}}</span></div><div class="incident-metrics"><span>Score at quarantine <strong>{{.ScoreAtQuarantine}}</strong></span><span>Captured reason points <strong>{{incidentPoints .}}</strong></span>{{if .ReleasedAt}}<span>Released <strong>{{formatTimePtr .ReleasedAt}}</strong></span>{{end}}</div>{{if ne (incidentPoints .) .ScoreAtQuarantine}}<div class="callout">This legacy incident predates complete evidence capture. New incidents store all contributions that make up the quarantine score.</div>{{end}}<ul class="reason-list">{{range .Reasons}}<li><span class="points">+{{.Points}}</span><div><strong>{{.Rule}}</strong><p>{{.Reason}}</p></div></li>{{end}}</ul></article>{{else}}<p class="empty">No incidents have been recorded for this workload.</p>{{end}}</div></section>
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Request history</p><h2>Recent security events</h2></div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Request</th><th>Decision</th><th>Status</th><th>Points</th></tr></thead><tbody>{{range .Events}}<tr><td>{{formatTime .Event.OccurredAt}}</td><td><strong>{{.Event.Method}}</strong> <code>{{.Event.Path}}</code><small>{{.Event.RequestID}}</small></td><td>{{.Event.Decision}}</td><td>{{.Event.StatusCode}}</td><td>{{eventPoints .}}</td></tr>{{else}}<tr><td colspan="5" class="empty">No events have been stored for this workload.</td></tr>{{end}}</tbody></table></div></section>
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Immutable history</p><h2>Workload audit timeline</h2></div></div>{{template "audit-table" .Audit}}</section>
+{{template "bottom" .}}
+{{end}}
+
+{{define "audit"}}
+{{template "top" .}}
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Security administration</p><h2>Complete audit timeline</h2></div></div>{{template "audit-table" .Records}}</section>
+{{template "bottom" .}}
+{{end}}
+
+{{define "audit-table"}}
+<div class="table-wrap"><table><thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody>{{range .}}<tr><td>{{formatTime .OccurredAt}}</td><td><strong>{{humanAuditAction .Action}}</strong></td><td>{{shortSPIFFE .ActorSPIFFEID}}</td><td>{{shortSPIFFE .TargetSPIFFEID}}</td><td><details><summary>View JSON</summary><pre>{{prettyJSON .DetailsJSON}}</pre></details></td></tr>{{else}}<tr><td colspan="5" class="empty">No audit records are available.</td></tr>{{end}}</tbody></table></div>
+{{end}}
+
+{{define "failure"}}
+{{template "top" .}}
+<section class="panel failure-panel"><h2>The dashboard could not reach a required service</h2><p>Confirm that SPIRE, API Gateway, OPA, Control Plane and Report Client are ready, then refresh this page.</p><a class="button" href="/">Try again</a></section>
+{{template "bottom" .}}
+{{end}}

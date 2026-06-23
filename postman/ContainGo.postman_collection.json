@@ -1,0 +1,548 @@
+{
+  "info": {
+    "_postman_id": "bbb4bc0d-068c-49ec-9e4d-d6d5cbf1a66f",
+    "name": "ContainGo End-to-End Demo",
+    "description": "Guided ContainGo demonstration through the localhost Dashboard facade. Postman authenticates with a local demo token; Dashboard-to-Control-Plane and Dashboard-to-Report-Client calls use SPIFFE mTLS.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Reset Demo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/reset",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "reset"
+          ]
+        },
+        "description": "Creates a clean starting point: normal mode, active workload, zero current risk and cleared request counters."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Reset succeeded\", () => pm.response.to.have.status(200));",
+              "const state = pm.response.json();",
+              "pm.test(\"Report Client is active\", () => pm.expect(state.report_client.status).to.eql(\"active\"));",
+              "pm.test(\"Mode is normal\", () => pm.expect(state.mode.mode).to.eql(\"normal\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - View Normal State",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/state",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "state"
+          ]
+        },
+        "description": ""
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "setTimeout(() => {}, 3000);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"State returned\", () => pm.response.to.have.status(200));",
+              "const state = pm.response.json();",
+              "pm.test(\"Normal request succeeds\", () => pm.expect(state.mode.successful_requests).to.be.above(0));",
+              "pm.test(\"No transport failures\", () => pm.expect(state.mode.failed_requests).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Trigger Rapid Burst",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/mode",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "mode"
+          ]
+        },
+        "description": "Sends a burst of allowed report requests to demonstrate request-rate risk scoring.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mode\": \"rapid\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Rapid mode enabled\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Mode is rapid\", () => pm.expect(pm.response.json().mode).to.eql(\"rapid\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Return to Normal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/mode",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "mode"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mode\": \"normal\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "setTimeout(() => {}, 2500);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Normal mode restored\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Start Attack",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/mode",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "mode"
+          ]
+        },
+        "description": "Attempts /api/payment-details and /api/admin/config. OPA denies both and risk reaches the quarantine threshold.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mode\": \"attack\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Attack mode enabled\", () => pm.response.to.have.status(200));",
+              "pm.environment.set(\"attack_started_at\", new Date().toISOString());"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Observe Automatic Quarantine",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/state",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "state"
+          ]
+        },
+        "description": ""
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "setTimeout(() => {}, 6500);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"State returned\", () => pm.response.to.have.status(200));",
+              "const state = pm.response.json();",
+              "pm.test(\"Report Client is quarantined\", () => pm.expect(state.report_client.status).to.eql(\"quarantined\"));",
+              "pm.test(\"Risk reached threshold\", () => pm.expect(state.report_client.risk_score).to.be.at.least(70));",
+              "pm.test(\"Order Client remains active\", () => pm.expect(state.order_client.status).to.eql(\"active\"));",
+              "pm.test(\"Forbidden requests recorded\", () => pm.expect(state.mode.forbidden_requests).to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Inspect Complete Evidence",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/report-client/evidence",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "report-client",
+            "evidence"
+          ]
+        },
+        "description": ""
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Evidence returned\", () => pm.response.to.have.status(200));",
+              "const evidence = pm.response.json();",
+              "const incident = evidence.incidents[0];",
+              "const total = incident.reasons.reduce((sum, reason) => sum + reason.points, 0);",
+              "pm.test(\"Incident evidence equals quarantine score\", () => pm.expect(total).to.eql(incident.score_at_quarantine));",
+              "pm.test(\"Security events are persisted\", () => pm.expect(evidence.events.length).to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Release and Recover",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/release",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "release"
+          ]
+        },
+        "description": ""
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Release succeeded\", () => pm.response.to.have.status(200));",
+              "const state = pm.response.json();",
+              "pm.test(\"Report Client is active\", () => pm.expect(state.report_client.status).to.eql(\"active\"));",
+              "pm.test(\"Risk is reset\", () => pm.expect(state.report_client.risk_score).to.eql(0));",
+              "pm.test(\"Mode is normal\", () => pm.expect(state.mode.mode).to.eql(\"normal\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Verify Normal Traffic Resumes",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/state",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "state"
+          ]
+        },
+        "description": ""
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "setTimeout(() => {}, 3500);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"State returned\", () => pm.response.to.have.status(200));",
+              "const state = pm.response.json();",
+              "pm.test(\"Report Client remains active\", () => pm.expect(state.report_client.status).to.eql(\"active\"));",
+              "pm.test(\"Latest request is allowed report route\", () => pm.expect(state.mode.last_path).to.eql(\"/api/reports\"));",
+              "pm.test(\"Latest status is HTTP 200\", () => pm.expect(state.mode.last_status).to.eql(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - List All Workloads",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-ContainGo-Demo-Token",
+            "value": "{{demo_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/demo-api/v1/workloads",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "demo-api",
+            "v1",
+            "workloads"
+          ]
+        },
+        "description": ""
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Workloads returned\", () => pm.response.to.have.status(200));",
+              "const workloads = pm.response.json().workloads;",
+              "pm.test(\"Seven workloads are registered\", () => pm.expect(workloads.length).to.eql(7));",
+              "pm.test(\"Every workload has a SPIFFE ID\", () => workloads.forEach(w => pm.expect(w.spiffe_id).to.match(/^spiffe:\\/\\//)));"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8060"
+    },
+    {
+      "key": "demo_token",
+      "value": ""
+    }
+  ]
+}

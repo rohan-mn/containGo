@@ -1,0 +1,25 @@
+FROM golang:1.25-bookworm AS build
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/democtl ./cmd/democtl
+
+FROM alpine:3.22
+
+RUN addgroup -g 65532 containgo \
+    && adduser -D -H -u 65532 -G containgo containgo
+
+COPY --from=build /out/democtl /app/democtl
+
+USER 65532:65532
+
+ENTRYPOINT ["/bin/sleep", "2147483647"]

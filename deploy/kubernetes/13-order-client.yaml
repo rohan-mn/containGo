@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-client
+  namespace: containgo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: order-client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: order-client
+        app.kubernetes.io/part-of: containgo
+        containgo.io/spiffe: 'true'
+    spec:
+      serviceAccountName: order-client
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: order-client
+        image: containgo/order-client:dev
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: SPIFFE_ENDPOINT_SOCKET
+          value: unix:///spiffe-workload-api/spire-agent.sock
+        - name: CONTAINGO_GATEWAY_URL
+          value: https://api-gateway.containgo.svc.cluster.local:8443
+        - name: CONTAINGO_ORDER_INTERVAL
+          value: 5s
+        - name: CONTAINGO_ORDER_REQUEST_TIMEOUT
+          value: 5s
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 150m
+            memory: 96Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: tmp
+        emptyDir:
+          sizeLimit: 32Mi

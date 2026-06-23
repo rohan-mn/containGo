@@ -1,0 +1,16 @@
+.git
+.gitignore
+.vscode
+.idea
+bin
+data
+certs
+tools
+*.db
+*.db-shm
+*.db-wal
+*.exe
+*.zip
+*.md
+deploy
+scripts

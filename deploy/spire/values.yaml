@@ -1,0 +1,25 @@
+global:
+  openshift: false
+  spire:
+    recommendations:
+      enabled: true
+    namespaces:
+      create: true
+    clusterName: containgo-kind
+    trustDomain: containgo.local
+    caSubject:
+      country: IN
+      organization: ContainGo
+      commonName: containgo.local
+
+spire-server:
+  controllerManager:
+    className: containgo
+    watchClassless: false
+    identities:
+      clusterSPIFFEIDs:
+        default:
+          enabled: false
+
+spiffe-oidc-discovery-provider:
+  enabled: false

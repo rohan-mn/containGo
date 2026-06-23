@@ -1,0 +1,278 @@
+# ==============================================================================
+# ContainGo .gitignore
+# ==============================================================================
+# This file excludes generated binaries, local runtime data, credentials,
+# cluster-specific files, generated Postman environments, logs, editor files,
+# and packaged phase artifacts.
+#
+# Do not remove secret-related entries unless the repository intentionally uses
+# public-only test fixtures. Never commit workload private keys or generated
+# local demo tokens.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Go build outputs and test artifacts
+# ------------------------------------------------------------------------------
+/bin/
+/dist/
+/out/
+/build-out/
+/coverage/
+
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.pprof
+*.trace
+
+coverage.out
+coverage.txt
+coverage.html
+coverage-*.out
+coverage-*.txt
+coverage-*.html
+
+cpu.prof
+mem.prof
+mutex.prof
+block.prof
+
+# Local Go workspace files for this single-module repository.
+go.work
+go.work.sum
+
+# Common Go test/reporting tools.
+.gotestsum/
+test-results/
+junit.xml
+junit-*.xml
+
+# ------------------------------------------------------------------------------
+# Runtime data and SQLite files
+# ------------------------------------------------------------------------------
+/data/
+/runtime/
+/state/
+
+*.db
+*.db3
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+
+# Database backups and exports.
+*.db.bak
+*.sqlite.bak
+*.backup
+*.dump
+
+# ------------------------------------------------------------------------------
+# SPIFFE, TLS, certificates, keys, and sensitive local files
+# ------------------------------------------------------------------------------
+/certs/dev/
+/certs/local/
+/secrets/
+/local-secrets/
+
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.csr
+*.srl
+*.der
+
+# If a public-only certificate fixture must be committed, add a narrowly scoped
+# negation rule such as:
+# !internal/testdata/public-test-cert.pem
+
+# Environment and secret files.
+.env
+.env.*
+!.env.example
+*.env.local
+*.secret
+*.secrets
+*.token
+*.credentials
+
+# Local Kubernetes secret exports.
+secret*.yaml
+secret*.yml
+*-secret.yaml
+*-secret.yml
+
+# ------------------------------------------------------------------------------
+# Generated Postman files
+# ------------------------------------------------------------------------------
+# The committed template and collection remain tracked. The generated local
+# environment contains the active demo token and must never be committed.
+/postman/ContainGo.local.generated.postman_environment.json
+/postman/*.generated.postman_environment.json
+/postman/*-generated.postman_environment.json
+/postman/.postman/
+
+# Newman/Postman output.
+newman/
+newman-*.json
+newman-*.html
+
+# ------------------------------------------------------------------------------
+# Kubernetes, kind, Helm, and local cluster state
+# ------------------------------------------------------------------------------
+/.kube/
+*.kubeconfig
+kubeconfig
+kubeconfig-*
+kind-kubeconfig*
+kind-export-logs/
+
+# Local Helm packages and repository caches.
+*.tgz
+/charts/*.tgz
+/.helm/
+/helm-cache/
+
+# Local cluster diagnostics and support bundles.
+cluster-dump/
+cluster-logs/
+support-bundle/
+must-gather/
+
+# ------------------------------------------------------------------------------
+# Local third-party binaries and downloaded tools
+# ------------------------------------------------------------------------------
+/tools/opa/opa
+/tools/opa/opa.exe
+/tools/bin/
+
+# Keep source scripts and version metadata under tools/ if they are added later.
+
+# ------------------------------------------------------------------------------
+# Generated ContainGo phase packages and guides
+# ------------------------------------------------------------------------------
+ContainGo_Phase*.zip
+ContainGo_Phase*_Complete_Guide.md
+ContainGo_Demo_Showcase_*.zip
+ContainGo_Demo_Showcase_Complete_Guide.md
+PHASE*_README.txt
+
+# Generic locally generated release archives.
+containGo-*.zip
+containgo-*.zip
+containgo-*.tar
+containgo-*.tar.gz
+
+# ------------------------------------------------------------------------------
+# Logs, temporary files, PID files, and caches
+# ------------------------------------------------------------------------------
+/logs/
+/tmp/
+/temp/
+/.cache/
+/.local-cache/
+
+*.log
+*.log.*
+*.pid
+*.pid.lock
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.rej
+*.swp
+*.swo
+*.swn
+*~
+
+# PowerShell transcripts.
+PowerShell_transcript.*
+*.transcript.txt
+
+# ------------------------------------------------------------------------------
+# Docker and container tooling
+# ------------------------------------------------------------------------------
+docker-compose.override.yml
+compose.override.yml
+
+# BuildKit metadata or local exports.
+.docker-buildx/
+docker-build-output/
+
+# ------------------------------------------------------------------------------
+# Security scanner and analysis caches
+# ------------------------------------------------------------------------------
+.golangci-lint/
+.gosec/
+.trivy/
+.grype/
+.syft/
+.scan-cache/
+
+# ------------------------------------------------------------------------------
+# IDEs and editors
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# Vim/Neovim
+Session.vim
+.netrwhist
+
+# ------------------------------------------------------------------------------
+# Operating-system files
+# ------------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux desktop/file-manager metadata
+.directory
+.Trash-*
+
+# ------------------------------------------------------------------------------
+# Miscellaneous generated files
+# ------------------------------------------------------------------------------
+*.patch.local
+*.diff.local
+scratch/
+notes.local.md
