@@ -87,6 +87,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /api/ui/workloads", s.proxyControlPlane("/v1/workloads"))
 	mux.HandleFunc("GET /api/ui/incidents", s.proxyControlPlane("/v1/incidents"))
 	mux.HandleFunc("GET /api/ui/events", s.handleEvents)
+	mux.HandleFunc("GET /api/ui/traces/{id}", s.proxyControlPlaneTrace)
 	mux.HandleFunc("GET /api/ui/events/stream", s.handleEventStream)
 	mux.HandleFunc("GET /api/ui/components/{component}", s.handleComponent)
 	mux.HandleFunc("POST /api/ui/components/{component}/requests", s.handleCreateRequest)
@@ -273,6 +274,15 @@ func (s *Server) proxyJob(w http.ResponseWriter, r *http.Request, method string)
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	query := "?after=" + url.QueryEscape(r.URL.Query().Get("after")) + "&limit=" + url.QueryEscape(r.URL.Query().Get("limit"))
 	s.proxyControlPlane("/v1/events"+query)(w, r)
+}
+
+func (s *Server) proxyControlPlaneTrace(w http.ResponseWriter, r *http.Request) {
+	traceID := strings.TrimSpace(r.PathValue("id"))
+	if traceID == "" {
+		platform.WriteError(w, http.StatusBadRequest, "trace ID is required")
+		return
+	}
+	s.proxyControlPlane("/v1/traces/"+url.PathEscape(traceID))(w, r)
 }
 
 func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {

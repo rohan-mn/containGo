@@ -446,6 +446,121 @@ function Ensure-SpireWorkloadEntry {
     }
 }
 
+function Get-ResponseCollection {
+    [CmdletBinding(PositionalBinding=$false)]
+    param(
+        [Parameter(Mandatory=$true)][AllowNull()][object]$Response,
+        [Parameter(Mandatory=$true)][string]$PropertyName,
+        [Parameter(Mandatory=$true)][string]$Endpoint
+    )
+
+    if ($null -eq $Response) {
+        throw "Endpoint '$Endpoint' returned an empty response; expected JSON property '$PropertyName'."
+    }
+
+    # The documented API shape is an object such as { "events": [...] }.
+    # Access the property through PSObject so Set-StrictMode does not turn an
+    # absent optional collection into an opaque PropertyNotFoundException.
+    $property = $Response.PSObject.Properties[$PropertyName]
+    if ($null -ne $property) {
+        if ($null -eq $property.Value) { return @() }
+        return @($property.Value)
+    }
+
+    # Be tolerant of a top-level JSON array. Windows PowerShell and some
+    # proxies can expose collection-only payloads this way even when the
+    # upstream API normally wraps them in an object.
+    if ($Response -is [System.Array]) {
+        return @($Response)
+    }
+
+    # Invoke-RestMethod normally deserializes application/json. Be tolerant of
+    # raw JSON and JSON that has been encoded as a JSON string by an intermediary.
+    # Unwrap at most four layers so malformed or cyclic input cannot loop forever.
+    if ($Response -is [string]) {
+        $parsed = $Response
+        for ($depth = 0; $depth -lt 4 -and $parsed -is [string]; $depth++) {
+            try {
+                $next = $parsed | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+                break
+            }
+            if ($next -is [string] -and $next -eq $parsed) { break }
+            $parsed = $next
+        }
+
+        if ($parsed -isnot [string]) {
+            $parsedProperty = $parsed.PSObject.Properties[$PropertyName]
+            if ($null -ne $parsedProperty) {
+                if ($null -eq $parsedProperty.Value) { return @() }
+                return @($parsedProperty.Value)
+            }
+            if ($parsed -is [System.Array]) { return @($parsed) }
+        }
+    }
+
+    $available = @($Response.PSObject.Properties | ForEach-Object { $_.Name }) -join ', '
+    if ([string]::IsNullOrWhiteSpace($available)) { $available = '<none>' }
+    try {
+        $preview = $Response | ConvertTo-Json -Depth 8 -Compress
+    } catch {
+        $preview = [string]$Response
+    }
+    if ($preview.Length -gt 1200) { $preview = $preview.Substring(0,1200) + '...' }
+    throw "Endpoint '$Endpoint' did not return JSON property '$PropertyName'. Available properties: $available. Response: $preview"
+}
+
+function Get-NestedPropertyValue {
+    [CmdletBinding(PositionalBinding=$false)]
+    param(
+        [AllowNull()][object]$Object,
+        [Parameter(Mandatory=$true)][string]$PropertyName
+    )
+    if ($null -eq $Object) { return $null }
+    $property = $Object.PSObject.Properties[$PropertyName]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+
+function Test-ResponseCollectionHandling {
+    $wrapped = [pscustomobject]@{ events = @([pscustomobject]@{ id = 1 }, [pscustomobject]@{ id = 2 }) }
+    $wrappedItems = @(Get-ResponseCollection -Response $wrapped -PropertyName 'events' -Endpoint 'self-test://wrapped')
+    if ($wrappedItems.Count -ne 2 -or $wrappedItems[0].id -ne 1 -or $wrappedItems[1].id -ne 2) {
+        throw 'The response collection helper failed its wrapped-object self-test.'
+    }
+
+    $singleWrapped = [pscustomobject]@{ events = @([pscustomobject]@{ id = 3 }) }
+    $singleItems = @(Get-ResponseCollection -Response $singleWrapped -PropertyName 'events' -Endpoint 'self-test://single')
+    if ($singleItems.Count -ne 1 -or $singleItems[0].id -ne 3) {
+        throw 'The response collection helper failed its single-item self-test.'
+    }
+
+    $emptyWrapped = [pscustomobject]@{ events = @() }
+    $emptyItems = @(Get-ResponseCollection -Response $emptyWrapped -PropertyName 'events' -Endpoint 'self-test://empty')
+    if ($emptyItems.Count -ne 0) {
+        throw 'The response collection helper failed its empty-collection self-test.'
+    }
+
+    $topLevel = @([pscustomobject]@{ id = 4 }, [pscustomobject]@{ id = 5 })
+    $topLevelItems = @(Get-ResponseCollection -Response $topLevel -PropertyName 'events' -Endpoint 'self-test://top-level-array')
+    if ($topLevelItems.Count -ne 2 -or $topLevelItems[0].id -ne 4 -or $topLevelItems[1].id -ne 5) {
+        throw 'The response collection helper failed its top-level-array self-test.'
+    }
+
+    $rawJSON = '{"events":[{"id":6}]}'
+    $rawItems = @(Get-ResponseCollection -Response $rawJSON -PropertyName 'events' -Endpoint 'self-test://raw-json')
+    if ($rawItems.Count -ne 1 -or $rawItems[0].id -ne 6) {
+        throw 'The response collection helper failed its raw-JSON self-test.'
+    }
+
+    $doubleEncodedJSON = $rawJSON | ConvertTo-Json -Compress
+    $doubleEncodedItems = @(Get-ResponseCollection -Response $doubleEncodedJSON -PropertyName 'events' -Endpoint 'self-test://double-encoded-json')
+    if ($doubleEncodedItems.Count -ne 1 -or $doubleEncodedItems[0].id -ne 6) {
+        throw 'The response collection helper failed its double-encoded JSON self-test.'
+    }
+}
+
 function Invoke-ContainGoSmokeTest([string]$BaseURL) {
     Write-Section 'Running full end-to-end platform verification'
 
@@ -485,14 +600,18 @@ function Invoke-ContainGoSmokeTest([string]$BaseURL) {
             $lastStatus = if ($snapshot) { [string]$snapshot.status } else { 'no response' }
             throw "$Client request job for $Method $Path did not complete. Last status: $lastStatus"
         }
-        $result = @($snapshot.results)[0]
+        $jobEndpoint = "$BaseURL/api/ui/components/$Client/jobs/$($job.id)"
+        $results = Get-ResponseCollection -Response $snapshot -PropertyName 'results' -Endpoint $jobEndpoint
+        $result = @($results)[0]
         if (-not $result) { throw "$Client request job for $Method $Path completed without a result." }
         return $result
     }
 
     function Get-VerificationWorkload([string]$Name) {
-        $inventory = Invoke-RestMethod -Method Get -Uri "$BaseURL/api/ui/workloads" -TimeoutSec 20
-        return @($inventory.workloads | Where-Object { $_.name -eq $Name })[0]
+        $endpoint = "$BaseURL/api/ui/workloads"
+        $inventory = Invoke-RestMethod -Method Get -Uri $endpoint -TimeoutSec 20
+        $workloads = Get-ResponseCollection -Response $inventory -PropertyName 'workloads' -Endpoint $endpoint
+        return @($workloads | Where-Object { (Get-NestedPropertyValue -Object $_ -PropertyName 'name') -eq $Name })[0]
     }
 
     function Normalize-VerificationClient([string]$Name) {
@@ -509,8 +628,11 @@ function Invoke-ContainGoSmokeTest([string]$BaseURL) {
         }
     }
 
-    $topology = Invoke-RestMethod -Method Get -Uri "$BaseURL/api/ui/topology" -TimeoutSec 15
-    if (-not $topology.components -or @($topology.components).Count -ne 8 -or @($topology.edges).Count -lt 8) {
+    $topologyEndpoint = "$BaseURL/api/ui/topology"
+    $topology = Invoke-RestMethod -Method Get -Uri $topologyEndpoint -TimeoutSec 15
+    $topologyComponents = Get-ResponseCollection -Response $topology -PropertyName 'components' -Endpoint $topologyEndpoint
+    $topologyEdges = Get-ResponseCollection -Response $topology -PropertyName 'edges' -Endpoint $topologyEndpoint
+    if (@($topologyComponents).Count -ne 8 -or @($topologyEdges).Count -lt 8) {
         throw 'Dashboard topology API did not return the six workloads plus OPA and SPIRE with their expected connections.'
     }
 
@@ -523,12 +645,18 @@ function Invoke-ContainGoSmokeTest([string]$BaseURL) {
         'protected-api' = 'spiffe://containgo.local/ns/containgo/sa/protected-api'
     }
     foreach ($entry in $expectedIDs.GetEnumerator()) {
-        $component = Invoke-RestMethod -Method Get -Uri "$BaseURL/api/ui/components/$($entry.Key)" -TimeoutSec 20
-        if (-not $component.identity -or $component.identity.spiffe_id -ne $entry.Value) {
-            $detail = if ($component.identity_error) { $component.identity_error } else { 'identity data was missing' }
+        $componentEndpoint = "$BaseURL/api/ui/components/$($entry.Key)"
+        $component = Invoke-RestMethod -Method Get -Uri $componentEndpoint -TimeoutSec 20
+        $identity = Get-NestedPropertyValue -Object $component -PropertyName 'identity'
+        $identitySPIFFEID = Get-NestedPropertyValue -Object $identity -PropertyName 'spiffe_id'
+        if (-not $identity -or $identitySPIFFEID -ne $entry.Value) {
+            $identityError = Get-NestedPropertyValue -Object $component -PropertyName 'identity_error'
+            $detail = if ($identityError) { $identityError } else { 'identity data was missing' }
             throw "Component '$($entry.Key)' did not return its expected SPIFFE identity. $detail"
         }
-        if (-not $component.identity.serial_number -or -not $component.identity.not_after) {
+        $serialNumber = Get-NestedPropertyValue -Object $identity -PropertyName 'serial_number'
+        $notAfter = Get-NestedPropertyValue -Object $identity -PropertyName 'not_after'
+        if (-not $serialNumber -or -not $notAfter) {
             throw "Component '$($entry.Key)' returned an incomplete X.509-SVID description."
         }
     }
@@ -588,18 +716,39 @@ function Invoke-ContainGoSmokeTest([string]$BaseURL) {
             throw 'Normal report traffic did not recover after administrative release.'
         }
 
-        $events = Invoke-RestMethod -Method Get -Uri "$BaseURL/api/ui/events?limit=500" -TimeoutSec 20
-        $matching = @($events.events | Where-Object { $_.decision_event.trace_id -eq $allowed.trace_id })
-        if ($matching.Count -lt 1) {
+        # Query the exact trace instead of downloading hundreds of rich event
+        # records. This avoids oversized responses as the persistent demo history
+        # grows and verifies the Control Plane trace lookup API directly.
+        $traceEndpoint = "$BaseURL/api/ui/traces/$([uri]::EscapeDataString([string]$allowed.trace_id))"
+        $traceItems = @()
+        for ($i=0; $i -lt 20; $i++) {
+            try {
+                $traceResponse = Invoke-RestMethod -Method Get -Uri $traceEndpoint -TimeoutSec 20
+                $traceItems = @(Get-ResponseCollection -Response $traceResponse -PropertyName 'events' -Endpoint $traceEndpoint)
+            } catch {
+                $traceItems = @()
+            }
+            if ($traceItems.Count -gt 0) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($traceItems.Count -lt 1) {
             throw "Allowed trace $($allowed.trace_id) was not persisted by the Control Plane."
         }
-        $event = $matching[-1]
-        if (-not $event.control_plane_hop -or @($event.decision_event.hops).Count -lt 3) {
+        $event = $traceItems[-1]
+        $controlPlaneHop = Get-NestedPropertyValue -Object $event -PropertyName 'control_plane_hop'
+        $decisionEvent = Get-NestedPropertyValue -Object $event -PropertyName 'decision_event'
+        $hops = Get-NestedPropertyValue -Object $decisionEvent -PropertyName 'hops'
+        if (-not $controlPlaneHop -or @($hops).Count -lt 3) {
             throw 'The persisted request is missing expected client/Gateway/OPA/Protected API/Control Plane trace evidence.'
         }
 
-        $incidents = Invoke-RestMethod -Method Get -Uri "$BaseURL/api/ui/incidents" -TimeoutSec 20
-        $resolvedIncident = @($incidents.incidents | Where-Object { $_.workload -eq 'report-client' -and $_.status -eq 'resolved' })
+        $incidentsEndpoint = "$BaseURL/api/ui/incidents"
+        $incidentsResponse = Invoke-RestMethod -Method Get -Uri $incidentsEndpoint -TimeoutSec 20
+        $incidentItems = Get-ResponseCollection -Response $incidentsResponse -PropertyName 'incidents' -Endpoint $incidentsEndpoint
+        $resolvedIncident = @($incidentItems | Where-Object {
+            (Get-NestedPropertyValue -Object $_ -PropertyName 'workload') -eq 'report-client' -and
+            (Get-NestedPropertyValue -Object $_ -PropertyName 'status') -eq 'resolved'
+        })
         if ($resolvedIncident.Count -lt 1) {
             throw 'Quarantine was released, but the corresponding incident was not marked resolved.'
         }
@@ -774,7 +923,8 @@ try {
     if ($stdinSelfTest.ExitCode -ne 0 -or $stdinSelfTest.StdOut.Trim() -ne 'ContainGo-STDIN') {
         throw "The native-process runner failed its standard-input self-test.`n$($stdinSelfTest.Output)"
     }
-    Write-Ok 'Native command argument quoting, stderr handling and standard input are functional.'
+    Test-ResponseCollectionHandling
+    Write-Ok 'Native command argument quoting, stderr handling, standard input and JSON collection handling are functional.'
 
     Write-Section 'Cleaning obsolete demo files'
     & (Join-Path $PSScriptRoot 'remove-obsolete.ps1') -RepositoryRoot $RepositoryRoot

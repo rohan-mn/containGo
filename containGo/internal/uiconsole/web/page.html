@@ -33,12 +33,7 @@
             <a class="button secondary" href="/control-panel">Inspect risk and quarantine</a>
           </div>
         </div>
-        <div class="hero-flow" aria-label="Request flow summary">
-          <div class="mini-node">Client SVID</div><div class="mini-arrow">→</div>
-          <div class="mini-node">Gateway</div><div class="mini-arrow">→</div>
-          <div class="mini-node">OPA</div><div class="mini-arrow">→</div>
-          <div class="mini-node">Risk Engine</div>
-        </div>
+        
       </div>
       <div id="home-metrics" class="metric-grid"></div>
       <div class="two-column">
@@ -63,7 +58,6 @@
           <svg id="topology" viewBox="0 0 1100 900" role="img" aria-label="ContainGo component topology">
             <defs>
               <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z"></path></marker>
-              <filter id="glow"><feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
             </defs>
             <g class="edge" id="edge-dashboard-order"><path d="M500 120 C390 140 300 170 230 225"></path><text id="label-dashboard-order" x="310" y="165">mTLS control</text></g>
             <g class="edge" id="edge-dashboard-report"><path d="M600 120 C710 140 800 170 870 225"></path><text id="label-dashboard-report" x="740" y="165">mTLS control</text></g>
@@ -74,14 +68,14 @@
             <g class="edge" id="edge-gateway-control"><path d="M595 385 C650 455 700 525 750 605"></path><text id="label-gateway-control" x="675" y="500">trusted event mTLS</text></g>
             <g class="edge identity" id="edge-spire-workloads"><path d="M550 785 C550 700 550 650 550 600"></path><text id="label-spire-workloads" x="570" y="735">Workload API · rotating SVIDs</text></g>
 
-            <g class="node" data-component="dashboard" transform="translate(450 40)"><rect width="200" height="82" rx="18"></rect><circle cx="38" cy="41" r="22"></circle><text class="icon" x="38" y="48">UI</text><text class="title" x="72" y="34">Dashboard</text><text class="subtitle" x="72" y="57">Operator console</text></g>
-            <g class="node business" data-component="order-client" transform="translate(110 220)"><rect width="210" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">O</text><text class="title" x="77" y="38">Order Client</text><text class="subtitle" x="77" y="62">Business caller</text></g>
-            <g class="node business" data-component="report-client" transform="translate(780 220)"><rect width="210" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">R</text><text class="title" x="77" y="38">Report Client</text><text class="subtitle" x="77" y="62">Business caller</text></g>
-            <g class="node gateway" data-component="api-gateway" transform="translate(450 305)"><rect width="200" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">G</text><text class="title" x="77" y="38">API Gateway</text><text class="subtitle" x="77" y="62">Identity enforcement</text></g>
-            <g class="node sidecar" data-component="opa" transform="translate(465 465)"><rect width="170" height="74" rx="18"></rect><circle cx="35" cy="37" r="20"></circle><text class="icon" x="35" y="44">P</text><text class="title" x="68" y="32">OPA</text><text class="subtitle" x="68" y="53">Policy sidecar</text></g>
-            <g class="node" data-component="protected-api" transform="translate(235 605)"><rect width="230" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">A</text><text class="title" x="77" y="38">Protected API</text><text class="subtitle" x="77" y="62">Gateway-only service</text></g>
-            <g class="node control" data-component="control-plane" transform="translate(635 605)"><rect width="230" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">C</text><text class="title" x="77" y="38">Control Plane</text><text class="subtitle" x="77" y="62">Risk and quarantine</text></g>
-            <g class="node identity-node" data-component="spire" transform="translate(400 785)"><rect width="300" height="82" rx="18"></rect><circle cx="42" cy="41" r="23"></circle><text class="icon" x="42" y="48">S</text><text class="title" x="80" y="34">SPIRE Server + Agent</text><text class="subtitle" x="80" y="57">Process attestation and SVID rotation</text></g>
+            <g class="node" data-component="dashboard" transform="translate(450 40)"><rect width="200" height="82" rx="10"></rect><circle cx="38" cy="41" r="22"></circle><text class="icon" x="38" y="48">UI</text><text class="title" x="72" y="34">Dashboard</text><text class="subtitle" x="72" y="57">Operator console</text></g>
+            <g class="node business" data-component="order-client" transform="translate(110 220)"><rect width="210" height="90" rx="10"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">O</text><text class="title" x="77" y="38">Order Client</text><text class="subtitle" x="77" y="62">Business caller</text></g>
+            <g class="node business" data-component="report-client" transform="translate(780 220)"><rect width="210" height="90" rx="10"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">R</text><text class="title" x="77" y="38">Report Client</text><text class="subtitle" x="77" y="62">Business caller</text></g>
+            <g class="node gateway" data-component="api-gateway" transform="translate(450 305)"><rect width="200" height="90" rx="10"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">G</text><text class="title" x="77" y="38">API Gateway</text><text class="subtitle" x="77" y="62">Identity enforcement</text></g>
+            <g class="node sidecar" data-component="opa" transform="translate(465 465)"><rect width="170" height="74" rx="10"></rect><circle cx="35" cy="37" r="20"></circle><text class="icon" x="35" y="44">P</text><text class="title" x="68" y="32">OPA</text><text class="subtitle" x="68" y="53">Policy sidecar</text></g>
+            <g class="node" data-component="protected-api" transform="translate(235 605)"><rect width="230" height="90" rx="10"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">A</text><text class="title" x="77" y="38">Protected API</text><text class="subtitle" x="77" y="62">Gateway-only service</text></g>
+            <g class="node control" data-component="control-plane" transform="translate(635 605)"><rect width="230" height="90" rx="10"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">C</text><text class="title" x="77" y="38">Control Plane</text><text class="subtitle" x="77" y="62">Risk and quarantine</text></g>
+            <g class="node identity-node" data-component="spire" transform="translate(400 785)"><rect width="300" height="82" rx="10"></rect><circle cx="42" cy="41" r="23"></circle><text class="icon" x="42" y="48">S</text><text class="title" x="80" y="34">SPIRE Server + Agent</text><text class="subtitle" x="80" y="57">Process attestation and SVID rotation</text></g>
           </svg>
         </div>
         <aside class="panel trace-panel">

@@ -127,9 +127,13 @@ func DoRequest(ctx context.Context, client *http.Client, method, url string, bod
 		return HTTPResult{}, err
 	}
 	defer resp.Body.Close()
-	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
+	const maxResponseBodyBytes = 4 * 1024 * 1024
+	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if readErr != nil {
 		return HTTPResult{}, readErr
+	}
+	if len(responseBody) > maxResponseBodyBytes {
+		return HTTPResult{}, fmt.Errorf("response body from %s exceeds %d bytes", url, maxResponseBodyBytes)
 	}
 	return HTTPResult{
 		StatusCode: resp.StatusCode,
