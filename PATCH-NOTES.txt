@@ -1,0 +1,45 @@
+CONTAINGO INTERACTIVE V7 - NON-BLOCKING DEPLOYMENT MIGRATION
+
+The V6 Windows field run successfully completed:
+- Docker and kind validation;
+- Calico readiness;
+- application image loading;
+- SPIRE Server health;
+- token-derived SPIRE Agent recovery;
+- Agent attestation and Workload API socket publication; and
+- verification of all six workload registration entries.
+
+It then reached the expected immutable-selector migration, but V6 used:
+
+  kubectl delete deployment ... --cascade=foreground --wait=true
+
+Foreground deletion adds a finalizer and waits for every old ReplicaSet and Pod.
+The Deployment was marked deleted, but kubectl timed out while waiting for its
+dependants. That left the migration interrupted before the replacement
+Deployment could be applied.
+
+Corrections in V7:
+- Uses non-blocking orphan deletion for incompatible Deployments.
+- Detects and repairs a Deployment already stuck in Terminating state.
+- Clears only the stuck Deployment deletion finalizer when required.
+- Deletes only the old ReplicaSet and Pods selected by the old immutable selector.
+- Waits for those old Pods to disappear before applying the replacement.
+- Cleans orphaned ReplicaSets/Pods when an earlier attempt already removed the
+  Deployment object.
+- Preserves Services, ServiceAccounts, ConfigMaps, SPIRE Server, SPIRE Agent,
+  registration entries, PVCs and Control Plane persistent data.
+- Supports interrupted migrations where some Deployments are old, some are new,
+  some are terminating, and some are already absent.
+- Keeps the Dashboard health/readiness probes on the correct port, 8060.
+- Retains the mandatory real-cluster smoke test.
+
+Installation:
+1. Extract this ZIP over C:\Projects\ContainGo-Interactive.
+2. Allow Windows to replace all existing files.
+3. Run:
+
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\RUN-CONTAINGO.ps1
+
+Do not delete the kind cluster and do not use -Repair. V7 is designed to resume
+from the exact V6 failure state, including a control-plane Deployment that may
+still be terminating.

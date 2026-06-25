@@ -1,0 +1,10 @@
+# ContainGo generated/runtime files
+.containgo/
+*.log
+*.pid
+*.tmp
+bin/
+dist/
+coverage.out
+.DS_Store
+Thumbs.db

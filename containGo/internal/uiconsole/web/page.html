@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ContainGo interactive SPIFFE workload quarantine platform">
+  <title>{{.Title}} · ContainGo</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body data-page="{{.Page}}" data-component="{{.Component}}">
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-mark">CG</span>
+      <span><strong>ContainGo</strong><small>Zero-Trust Workload Lab</small></span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/architecture">Architecture</a>
+      <a href="/control-panel">Control Panel</a>
+    </nav>
+    <div class="live-pill"><span></span> Live cluster</div>
+  </header>
+
+  <main>
+    <section id="home-page" class="page-section">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">SPIFFE · Kubernetes · OPA · Automated containment</p>
+          <h1>Watch workload identity become a security decision.</h1>
+          <p class="hero-copy">Generate real requests from Order Client or Report Client. ContainGo authenticates their X.509-SVIDs, evaluates policy, calculates risk, quarantines suspicious workloads, and keeps unrelated services running.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="/architecture">Open interactive architecture</a>
+            <a class="button secondary" href="/control-panel">Inspect risk and quarantine</a>
+          </div>
+        </div>
+        <div class="hero-flow" aria-label="Request flow summary">
+          <div class="mini-node">Client SVID</div><div class="mini-arrow">→</div>
+          <div class="mini-node">Gateway</div><div class="mini-arrow">→</div>
+          <div class="mini-node">OPA</div><div class="mini-arrow">→</div>
+          <div class="mini-node">Risk Engine</div>
+        </div>
+      </div>
+      <div id="home-metrics" class="metric-grid"></div>
+      <div class="two-column">
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">Runtime</p><h2>Workloads</h2></div><a href="/architecture">View topology</a></div>
+          <div id="home-workloads" class="workload-grid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">Evidence</p><h2>Latest decisions</h2></div><a href="/control-panel">Inspect all</a></div>
+          <div id="home-events" class="event-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="architecture-page" class="page-section">
+      <div class="page-heading">
+        <div><p class="eyebrow">Live request visualization</p><h1>Interactive architecture</h1><p>Click any component to open its inspector in a new tab. Send traffic from a client page and watch real mTLS, SPIFFE, OPA, and risk evidence appear on the links.</p></div>
+        <div class="legend"><span><i class="legend-solid"></i> Runtime traffic</span><span><i class="legend-dotted"></i> Identity delivery</span></div>
+      </div>
+      <div class="architecture-layout">
+        <div class="topology-card">
+          <svg id="topology" viewBox="0 0 1100 900" role="img" aria-label="ContainGo component topology">
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z"></path></marker>
+              <filter id="glow"><feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
+            </defs>
+            <g class="edge" id="edge-dashboard-order"><path d="M500 120 C390 140 300 170 230 225"></path><text id="label-dashboard-order" x="310" y="165">mTLS control</text></g>
+            <g class="edge" id="edge-dashboard-report"><path d="M600 120 C710 140 800 170 870 225"></path><text id="label-dashboard-report" x="740" y="165">mTLS control</text></g>
+            <g class="edge" id="edge-order-gateway"><path d="M270 290 C360 300 410 315 485 330"></path><text id="label-order-gateway" x="300" y="330">SPIFFE mTLS</text></g>
+            <g class="edge" id="edge-report-gateway"><path d="M830 290 C740 300 690 315 615 330"></path><text id="label-report-gateway" x="690" y="330">SPIFFE mTLS</text></g>
+            <g class="edge local" id="edge-gateway-opa"><path d="M550 390 L550 465"></path><text id="label-gateway-opa" x="570" y="435">localhost policy</text></g>
+            <g class="edge" id="edge-gateway-protected"><path d="M505 385 C450 455 400 525 350 605"></path><text id="label-gateway-protected" x="350" y="500">SPIFFE mTLS</text></g>
+            <g class="edge" id="edge-gateway-control"><path d="M595 385 C650 455 700 525 750 605"></path><text id="label-gateway-control" x="675" y="500">trusted event mTLS</text></g>
+            <g class="edge identity" id="edge-spire-workloads"><path d="M550 785 C550 700 550 650 550 600"></path><text id="label-spire-workloads" x="570" y="735">Workload API · rotating SVIDs</text></g>
+
+            <g class="node" data-component="dashboard" transform="translate(450 40)"><rect width="200" height="82" rx="18"></rect><circle cx="38" cy="41" r="22"></circle><text class="icon" x="38" y="48">UI</text><text class="title" x="72" y="34">Dashboard</text><text class="subtitle" x="72" y="57">Operator console</text></g>
+            <g class="node business" data-component="order-client" transform="translate(110 220)"><rect width="210" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">O</text><text class="title" x="77" y="38">Order Client</text><text class="subtitle" x="77" y="62">Business caller</text></g>
+            <g class="node business" data-component="report-client" transform="translate(780 220)"><rect width="210" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">R</text><text class="title" x="77" y="38">Report Client</text><text class="subtitle" x="77" y="62">Business caller</text></g>
+            <g class="node gateway" data-component="api-gateway" transform="translate(450 305)"><rect width="200" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">G</text><text class="title" x="77" y="38">API Gateway</text><text class="subtitle" x="77" y="62">Identity enforcement</text></g>
+            <g class="node sidecar" data-component="opa" transform="translate(465 465)"><rect width="170" height="74" rx="18"></rect><circle cx="35" cy="37" r="20"></circle><text class="icon" x="35" y="44">P</text><text class="title" x="68" y="32">OPA</text><text class="subtitle" x="68" y="53">Policy sidecar</text></g>
+            <g class="node" data-component="protected-api" transform="translate(235 605)"><rect width="230" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">A</text><text class="title" x="77" y="38">Protected API</text><text class="subtitle" x="77" y="62">Gateway-only service</text></g>
+            <g class="node control" data-component="control-plane" transform="translate(635 605)"><rect width="230" height="90" rx="18"></rect><circle cx="40" cy="45" r="23"></circle><text class="icon" x="40" y="52">C</text><text class="title" x="77" y="38">Control Plane</text><text class="subtitle" x="77" y="62">Risk and quarantine</text></g>
+            <g class="node identity-node" data-component="spire" transform="translate(400 785)"><rect width="300" height="82" rx="18"></rect><circle cx="42" cy="41" r="23"></circle><text class="icon" x="42" y="48">S</text><text class="title" x="80" y="34">SPIRE Server + Agent</text><text class="subtitle" x="80" y="57">Process attestation and SVID rotation</text></g>
+          </svg>
+        </div>
+        <aside class="panel trace-panel">
+          <div class="panel-heading"><div><p class="eyebrow">Live evidence</p><h2>Latest trace</h2></div><span id="stream-status" class="status-badge active">Connected</span></div>
+          <div id="trace-summary" class="empty-state">Send a request from Order Client or Report Client. The exact TLS version, SVID serial, SPIFFE identities, OPA decision, risk delta, and quarantine result will appear here.</div>
+          <pre id="trace-json" class="trace-json hidden"></pre>
+        </aside>
+      </div>
+    </section>
+
+    <section id="component-page" class="page-section">
+      <div class="page-heading"><div><p class="eyebrow">Workload inspector</p><h1 id="component-title">Component</h1><p id="component-role"></p></div><a class="button secondary" href="/architecture">Back to architecture</a></div>
+      <div id="component-banner"></div>
+      <div class="component-grid">
+        <section class="panel identity-panel"><div class="panel-heading"><div><p class="eyebrow">Cryptographic identity</p><h2>X.509-SVID</h2></div><span id="identity-status" class="status-badge">Loading</span></div><dl id="identity-details" class="detail-list"></dl></section>
+        <section class="panel state-panel"><div class="panel-heading"><div><p class="eyebrow">Behavioral state</p><h2>Risk and containment</h2></div></div><div id="component-state"></div></section>
+      </div>
+      <section id="request-builder" class="panel hidden">
+        <div class="panel-heading"><div><p class="eyebrow">Identity-preserving request executor</p><h2>Send traffic as this workload</h2></div><span class="helper-text">The browser commands the client; the client originates the mTLS request with its own SVID.</span></div>
+        <div class="form-grid">
+          <label>HTTP method<select id="request-method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></label>
+          <label>Registered endpoint<select id="request-path"></select></label>
+          <label>Request count<input id="request-count" type="number" min="1" max="1000" value="1"></label>
+          <label>Concurrency<input id="request-concurrency" type="number" min="1" max="50" value="1"></label>
+          <label>Interval (ms)<input id="request-interval" type="number" min="0" max="60000" value="0"></label>
+          <label>Continuous until stopped<input id="request-continuous" type="checkbox"></label>
+          <label>Continuous max seconds<input id="request-duration" type="number" min="1" max="600" value="600"></label>
+          <label class="wide">JSON body<textarea id="request-body" rows="5">{}</textarea></label>
+        </div>
+        <div class="button-row"><button id="send-request" class="button primary">Send request job</button><button id="attack-preset" class="button danger">Run quarantine sequence</button><button id="rate-preset" class="button secondary">Load rate burst</button><button id="cancel-job" class="button secondary hidden">Cancel running job</button></div>
+        <div id="job-output" class="job-output empty-state">No job started.</div>
+      </section>
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Recent evidence</p><h2>Activity for this component</h2></div></div><div id="component-events" class="event-list"></div></section>
+    </section>
+
+    <section id="control-panel-page" class="page-section">
+      <div class="page-heading"><div><p class="eyebrow">Administrative plane</p><h1>Control panel</h1><p>Inspect workload state, risk contributions, incidents, evidence, and controlled release actions.</p></div><button id="refresh-control" class="button secondary">Refresh</button></div>
+      <div id="control-metrics" class="metric-grid"></div>
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Inventory</p><h2>Workload risk</h2></div></div><div class="table-wrap"><table><thead><tr><th>Workload</th><th>Status</th><th>Risk</th><th>Allowed</th><th>Denied</th><th>Last decision</th><th>Actions</th></tr></thead><tbody id="workloads-table"></tbody></table></div></section>
+      <div class="two-column">
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Containment</p><h2>Incidents</h2></div></div><div id="incidents-list" class="event-list"></div></section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Audit</p><h2>Risk evidence</h2></div></div><div id="control-events" class="event-list"></div></section>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

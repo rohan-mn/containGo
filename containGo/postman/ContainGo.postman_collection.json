@@ -1,0 +1,134 @@
+{
+  "info": {
+    "_postman_id": "f4b5c1b0-9a62-46dd-a0b3-containgo2026",
+    "name": "ContainGo Interactive Workload Lab",
+    "description": "Calls the Dashboard workload-control API. The selected Kubernetes workload, not Postman, originates the downstream SPIFFE mTLS request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://127.0.0.1:8060"},
+    {"key": "order_job_id", "value": ""},
+    {"key": "report_job_id", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "Platform",
+      "item": [
+        {
+          "name": "Dashboard readiness",
+          "request": {"method": "GET", "url": "{{base_url}}/readyz"}
+        },
+        {
+          "name": "Architecture topology",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/topology"}
+        },
+        {
+          "name": "Workloads and risk",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/workloads"}
+        },
+        {
+          "name": "Security evidence",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/events?limit=50"}
+        },
+        {
+          "name": "Incidents",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/incidents"}
+        }
+      ]
+    },
+    {
+      "name": "Order Client",
+      "item": [
+        {
+          "name": "Inspect Order Client SVID",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/components/order-client"}
+        },
+        {
+          "name": "Start allowed GET orders job",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": ["const data = pm.response.json();", "pm.collectionVariables.set('order_job_id', data.id);"]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"method\": \"GET\",\n  \"path\": \"/api/orders\",\n  \"body\": {},\n  \"count\": 1,\n  \"concurrency\": 1,\n  \"interval_ms\": 0,\n  \"continuous\": false,\n  \"max_duration_seconds\": 600\n}"},
+            "url": "{{base_url}}/api/ui/components/order-client/requests"
+          }
+        },
+        {
+          "name": "Poll Order Client job",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/components/order-client/jobs/{{order_job_id}}"}
+        },
+        {
+          "name": "Start order rate burst",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('order_job_id', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"method\": \"GET\",\n  \"path\": \"/api/orders\",\n  \"body\": {},\n  \"count\": 30,\n  \"concurrency\": 15,\n  \"interval_ms\": 0,\n  \"continuous\": false,\n  \"max_duration_seconds\": 600\n}"},
+            "url": "{{base_url}}/api/ui/components/order-client/requests"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Report Client and Quarantine",
+      "item": [
+        {
+          "name": "Start allowed GET reports job",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('report_job_id', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"method\": \"GET\",\n  \"path\": \"/api/reports\",\n  \"body\": {},\n  \"count\": 1,\n  \"concurrency\": 1,\n  \"interval_ms\": 0,\n  \"continuous\": false,\n  \"max_duration_seconds\": 600\n}"},
+            "url": "{{base_url}}/api/ui/components/report-client/requests"
+          }
+        },
+        {
+          "name": "Attack 1 - payment details (+65)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('report_job_id', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"method\": \"GET\",\n  \"path\": \"/api/payment-details\",\n  \"body\": {},\n  \"count\": 1,\n  \"concurrency\": 1,\n  \"interval_ms\": 0,\n  \"continuous\": false,\n  \"max_duration_seconds\": 600\n}"},
+            "url": "{{base_url}}/api/ui/components/report-client/requests"
+          }
+        },
+        {
+          "name": "Poll Report Client job",
+          "request": {"method": "GET", "url": "{{base_url}}/api/ui/components/report-client/jobs/{{report_job_id}}"}
+        },
+        {
+          "name": "Attack 2 - admin config (+60, quarantine)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('report_job_id', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"method\": \"PUT\",\n  \"path\": \"/api/admin/config\",\n  \"body\": {\"maintenance_mode\": true},\n  \"count\": 1,\n  \"concurrency\": 1,\n  \"interval_ms\": 0,\n  \"continuous\": false,\n  \"max_duration_seconds\": 600\n}"},
+            "url": "{{base_url}}/api/ui/components/report-client/requests"
+          }
+        },
+        {
+          "name": "Normally allowed route after quarantine",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('report_job_id', pm.response.json().id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"method\": \"GET\",\n  \"path\": \"/api/reports\",\n  \"body\": {},\n  \"count\": 1,\n  \"concurrency\": 1,\n  \"interval_ms\": 0,\n  \"continuous\": false,\n  \"max_duration_seconds\": 600\n}"},
+            "url": "{{base_url}}/api/ui/components/report-client/requests"
+          }
+        },
+        {
+          "name": "Release Report Client",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{}"},
+            "url": "{{base_url}}/api/ui/workloads/report-client/release"
+          }
+        }
+      ]
+    }
+  ]
+}

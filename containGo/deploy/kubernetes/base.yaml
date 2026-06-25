@@ -1,0 +1,845 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: containgo
+  labels:
+    app.kubernetes.io/part-of: containgo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-gateway
+  namespace: containgo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: control-plane
+  namespace: containgo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard
+  namespace: containgo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: order-client
+  namespace: containgo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: report-client
+  namespace: containgo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: protected-api
+  namespace: containgo
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spiffe-helper-config
+  namespace: containgo
+data:
+  helper.conf: |
+    agent_address = "/run/spire/sockets/agent.sock"
+    cert_dir = "/run/spiffe/certs"
+    daemon_mode = true
+    svid_file_name = "svid.pem"
+    svid_key_file_name = "svid_key.pem"
+    svid_bundle_file_name = "bundle.pem"
+    add_intermediates_to_bundle = true
+    cert_file_mode = 0644
+    key_file_mode = 0600
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: containgo-opa-policy
+  namespace: containgo
+data:
+  containgo.rego: |
+    package containgo.authz
+    
+    import rego.v1
+    
+    default allow := false
+    
+    allow if {
+      not input.quarantined
+      input.workload == "order-client"
+      input.spiffe_id == "spiffe://containgo.local/ns/containgo/sa/order-client"
+      order_route
+    }
+    
+    allow if {
+      not input.quarantined
+      input.workload == "report-client"
+      input.spiffe_id == "spiffe://containgo.local/ns/containgo/sa/report-client"
+      report_route
+    }
+    
+    order_route if {
+      input.method == "GET"
+      input.path == "/api/orders"
+    }
+    
+    order_route if {
+      input.method == "POST"
+      input.path == "/api/orders"
+    }
+    
+    order_route if {
+      input.method == "PUT"
+      input.path == "/api/orders/ORD-1001"
+    }
+    
+    order_route if {
+      input.method == "DELETE"
+      input.path == "/api/orders/ORD-1001"
+    }
+    
+    report_route if {
+      input.method == "GET"
+      input.path == "/api/reports"
+    }
+    
+    report_route if {
+      input.method == "POST"
+      input.path == "/api/reports/generate"
+    }
+    
+    report_route if {
+      input.method == "GET"
+      input.path == "/api/customers"
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: control-plane-data
+  namespace: containgo
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: containgo
+  labels:
+    app: control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+        containgo.io/workload: control-plane
+    spec:
+      serviceAccountName: control-plane
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: control-plane
+          image: containgo:local
+          imagePullPolicy: Never
+          command: ["/app/control-plane"]
+          ports:
+            - name: app
+              containerPort: 8443
+            - name: health
+              containerPort: 8081
+          env:
+            - name: SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/control-plane"
+            - name: STATE_FILE
+              value: "/data/state.json"
+            - name: RISK_THRESHOLD
+              value: "100"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: data
+              mountPath: /data
+        - name: spiffe-helper
+          image: containgo-spiffe-helper:local
+          imagePullPolicy: Never
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 10002
+            runAsGroup: 10002
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+
+      volumes:
+        - name: agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        - name: certs
+          emptyDir: {}
+        - name: helper-config
+          configMap:
+            name: spiffe-helper-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: control-plane-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  namespace: containgo
+spec:
+  selector: {app: control-plane}
+  ports:
+    - name: mtls
+      port: 8443
+      targetPort: app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: protected-api
+  namespace: containgo
+  labels:
+    app: protected-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: protected-api
+  template:
+    metadata:
+      labels:
+        app: protected-api
+        containgo.io/workload: protected-api
+    spec:
+      serviceAccountName: protected-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10006
+        runAsGroup: 10006
+        fsGroup: 10006
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: protected-api
+          image: containgo:local
+          imagePullPolicy: Never
+          command: ["/app/protected-api"]
+          ports:
+            - name: app
+              containerPort: 8443
+            - name: health
+              containerPort: 8081
+          env:
+            - name: SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/protected-api"
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /run/spiffe/certs
+        - name: spiffe-helper
+          image: containgo-spiffe-helper:local
+          imagePullPolicy: Never
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 10006
+            runAsGroup: 10006
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+
+      volumes:
+        - name: agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        - name: certs
+          emptyDir: {}
+        - name: helper-config
+          configMap:
+            name: spiffe-helper-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: protected-api
+  namespace: containgo
+spec:
+  selector: {app: protected-api}
+  ports:
+    - name: mtls
+      port: 8443
+      targetPort: app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: containgo
+  labels:
+    app: api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        containgo.io/workload: api-gateway
+    spec:
+      serviceAccountName: api-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: api-gateway
+          image: containgo:local
+          imagePullPolicy: Never
+          command: ["/app/api-gateway"]
+          ports:
+            - name: app
+              containerPort: 8443
+            - name: health
+              containerPort: 8081
+          env:
+            - name: SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/api-gateway"
+            - name: OPA_URL
+              value: "http://127.0.0.1:8181/v1/data/containgo/authz/allow"
+            - name: PROTECTED_API_URL
+              value: "https://protected-api:8443"
+            - name: CONTROL_PLANE_URL
+              value: "https://control-plane:8443"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /run/spiffe/certs
+        - name: spiffe-helper
+          image: containgo-spiffe-helper:local
+          imagePullPolicy: Never
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+
+        - name: opa
+          image: openpolicyagent/opa:1.17.1-static
+          imagePullPolicy: IfNotPresent
+          args: ["run", "--server", "--addr=127.0.0.1:8181", "/policy/containgo.rego"]
+          ports:
+            - name: opa
+              containerPort: 8181
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          volumeMounts:
+            - name: opa-policy
+              mountPath: /policy
+              readOnly: true
+      volumes:
+        - name: agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        - name: certs
+          emptyDir: {}
+        - name: helper-config
+          configMap:
+            name: spiffe-helper-config
+
+        - name: opa-policy
+          configMap:
+            name: containgo-opa-policy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: containgo
+spec:
+  selector: {app: api-gateway}
+  ports:
+    - name: mtls
+      port: 8443
+      targetPort: app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-client
+  namespace: containgo
+  labels:
+    app: order-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-client
+  template:
+    metadata:
+      labels:
+        app: order-client
+        containgo.io/workload: order-client
+    spec:
+      serviceAccountName: order-client
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10004
+        runAsGroup: 10004
+        fsGroup: 10004
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: order-client
+          image: containgo:local
+          imagePullPolicy: Never
+          command: ["/app/order-client"]
+          ports:
+            - name: app
+              containerPort: 8444
+            - name: health
+              containerPort: 8081
+          env:
+            - name: SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/order-client"
+            - name: GATEWAY_URL
+              value: "https://api-gateway:8443"
+            - name: GATEWAY_SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/api-gateway"
+            - name: CONTROL_ADDR
+              value: ":8444"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /run/spiffe/certs
+        - name: spiffe-helper
+          image: containgo-spiffe-helper:local
+          imagePullPolicy: Never
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 10004
+            runAsGroup: 10004
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+
+      volumes:
+        - name: agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        - name: certs
+          emptyDir: {}
+        - name: helper-config
+          configMap:
+            name: spiffe-helper-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-client
+  namespace: containgo
+spec:
+  selector: {app: order-client}
+  ports:
+    - name: control-mtls
+      port: 8444
+      targetPort: app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-client
+  namespace: containgo
+  labels:
+    app: report-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: report-client
+  template:
+    metadata:
+      labels:
+        app: report-client
+        containgo.io/workload: report-client
+    spec:
+      serviceAccountName: report-client
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10005
+        runAsGroup: 10005
+        fsGroup: 10005
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: report-client
+          image: containgo:local
+          imagePullPolicy: Never
+          command: ["/app/report-client"]
+          ports:
+            - name: app
+              containerPort: 8444
+            - name: health
+              containerPort: 8081
+          env:
+            - name: SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/report-client"
+            - name: GATEWAY_URL
+              value: "https://api-gateway:8443"
+            - name: GATEWAY_SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/api-gateway"
+            - name: CONTROL_ADDR
+              value: ":8444"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /run/spiffe/certs
+        - name: spiffe-helper
+          image: containgo-spiffe-helper:local
+          imagePullPolicy: Never
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 10005
+            runAsGroup: 10005
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+
+      volumes:
+        - name: agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        - name: certs
+          emptyDir: {}
+        - name: helper-config
+          configMap:
+            name: spiffe-helper-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: report-client
+  namespace: containgo
+spec:
+  selector: {app: report-client}
+  ports:
+    - name: control-mtls
+      port: 8444
+      targetPort: app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: containgo
+  labels:
+    app: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+        containgo.io/workload: dashboard
+    spec:
+      serviceAccountName: dashboard
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10003
+        runAsGroup: 10003
+        fsGroup: 10003
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: dashboard
+          image: containgo:local
+          imagePullPolicy: Never
+          command: ["/app/dashboard"]
+          ports:
+            - name: app
+              containerPort: 8060
+          env:
+            - name: SPIFFE_ID
+              value: "spiffe://containgo.local/ns/containgo/sa/dashboard"
+            - name: CONTROL_PLANE_URL
+              value: "https://control-plane:8443"
+            - name: LISTEN_ADDR
+              value: ":8060"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: app
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: app
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /run/spiffe/certs
+        - name: spiffe-helper
+          image: containgo-spiffe-helper:local
+          imagePullPolicy: Never
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          securityContext:
+            runAsUser: 10003
+            runAsGroup: 10003
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: certs
+              mountPath: /run/spiffe/certs
+            - name: helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+
+      volumes:
+        - name: agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        - name: certs
+          emptyDir: {}
+        - name: helper-config
+          configMap:
+            name: spiffe-helper-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: containgo
+spec:
+  selector: {app: dashboard}
+  ports:
+    - name: http
+      port: 8060
+      targetPort: app
