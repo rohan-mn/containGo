@@ -19,6 +19,8 @@ import (
 	"containgo.local/containgo/internal/platform"
 )
 
+// SPIFEE IDs
+// A SPIFFE ID is the permanent identity name of a workload
 const (
 	gatewayID      = "spiffe://containgo.local/ns/containgo/sa/api-gateway"
 	protectedAPIID = "spiffe://containgo.local/ns/containgo/sa/protected-api"
@@ -28,12 +30,14 @@ const (
 	dashboardID    = "spiffe://containgo.local/ns/containgo/sa/dashboard"
 )
 
+// This defines a new type called "gateway"
+// It says that every gateway value contains these fields: files, opaURL, protectedAPIURL, etc .
 type gateway struct {
 	files           platform.IdentityFiles
 	opaURL          string
 	protectedAPIURL string
 	controlPlaneURL string
-	opaClient       *http.Client
+	opaClient       *http.Client //it must contain a pointer to an http.Client value
 	protectedClient *http.Client
 	controlClient   *http.Client
 }
@@ -60,11 +64,16 @@ func main() {
 	}
 }
 
+// This method "run" starts up the health server and primary mTLS API server.
 func (g *gateway) run(ctx context.Context) error {
 	platform.ServeHealth(env("HEALTH_ADDR", ":8081"), func() error {
+
+		//checks if the API Gateway has an identity.
 		if err := platform.ReadyIdentity(g.files); err != nil {
 			return err
 		}
+
+		//checking OPA readiness.
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, strings.TrimSuffix(g.opaURL, "/v1/data/containgo/authz/allow")+"/health", nil)
 		resp, err := g.opaClient.Do(req)
 		if err != nil {
@@ -77,26 +86,43 @@ func (g *gateway) run(ctx context.Context) error {
 		return nil
 	})
 
+	// This creates Go’s HTTP request router.
 	mux := http.NewServeMux()
+
+	// This registers a handler function (handleIdentity) for the GET /v1/identity endpoint.
 	mux.HandleFunc("GET /v1/identity", g.handleIdentity)
+
+	// This registers a handler function (handlePolicyInfo) for the GET /v1/policy endpoint.
 	mux.HandleFunc("GET /v1/policy", g.handlePolicyInfo)
+
+	// This registers a handler function (handleBusiness) for the /api/ endpoint.
+	//  It will handle all HTTP methods (GET, POST, etc.) for any path that starts with /api/.
 	mux.HandleFunc("/api/", g.handleBusiness)
 
+	// API Gateway’s server-side mTLS configuration.
+	// configures the Gateway to present its own SVID and verify incoming client SVIDs.
+	// Only allows requests from workloads with the SPIFFE IDs of order-client, report-client, or dashboard.
 	tlsConfig := platform.DynamicServerTLS(g.files, func(peerID string) bool {
 		return peerID == orderClientID || peerID == reportClientID || peerID == dashboardID
 	})
+
+	// HTTP Server configuration with timeouts and TLS settings.
 	server := &http.Server{
 		Handler:           requestLogger(mux),
 		TLSConfig:         tlsConfig,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       20 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,  // The client has 5 seconds to send the HTTP headers.
+		ReadTimeout:       20 * time.Second, // The client has 20 seconds to send the entire request body.
+		WriteTimeout:      30 * time.Second, // The server has 30 seconds to send the entire response body.
+		IdleTimeout:       60 * time.Second, // The server will close idle connections after 60 seconds.
 	}
+
+	// This starts listening for TCP connections on: LISTEN_ADDR (default is :8443) and wraps the listener with TLS.
 	listener, err := tls.Listen("tcp", env("LISTEN_ADDR", ":8443"), tlsConfig)
 	if err != nil {
 		return err
 	}
+
+	// This goroutine waits for the context to be canceled (e.g., when the program receives an interrupt signal).
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -107,6 +133,7 @@ func (g *gateway) run(ctx context.Context) error {
 	return server.Serve(listener)
 }
 
+// This endpoint is useful for demonstrating which SPIFFE identity the Gateway currently possesses.
 func (g *gateway) handleIdentity(w http.ResponseWriter, _ *http.Request) {
 	info, err := platform.LoadIdentityInfo(g.files, "api-gateway")
 	if err != nil {
@@ -124,7 +151,12 @@ func (g *gateway) handlePolicyInfo(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// It handles business requests. Eg: GET /api/orders, POST /api/reports, etc.
+// It performs mTLS authentication, OPA authorization, request forwarding, and event publishing.
 func (g *gateway) handleBusiness(w http.ResponseWriter, r *http.Request) {
+
+	// Extract the caller’s SPIFFE ID.
+	// This obtains the identity of the workload from the mTLS connection.
 	callerID := platform.PeerSPIFFEID(r)
 	if callerID != orderClientID && callerID != reportClientID {
 		platform.WriteError(w, http.StatusForbidden, "business requests must originate from order-client or report-client")
@@ -135,29 +167,43 @@ func (g *gateway) handleBusiness(w http.ResponseWriter, r *http.Request) {
 		platform.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Obtain or create the trace ID.
 	traceID := strings.TrimSpace(r.Header.Get("X-ContainGo-Trace-ID"))
 	if traceID == "" {
 		traceID = platform.NewID("trace")
 	}
+
+	// Generate a Gateway request ID.
 	gatewayRequestID := platform.NewID("gateway")
+
+	// Convert the SPIFFE ID into a workload name .
+	// Eg spiffe://containgo.local/ns/containgo/sa/order-client becomes order-client.
 	workloadName := platform.WorkloadFromSPIFFEID(callerID)
+
+	// Load the Gateway’s own identity information (SPIFFE ID, X.509-SVID, etc.) from the filesystem.
 	identity, err := platform.LoadIdentityInfo(g.files, "api-gateway")
 	if err != nil {
 		platform.WriteError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
+
+	// Ask the Control Plane for workload state. Eg: whether the workload is quarantined or not.
 	workloadState, err := g.resolveWorkload(r.Context(), callerID, identity.SPIFFEID)
 	if err != nil {
 		platform.WriteError(w, http.StatusServiceUnavailable, "control-plane state lookup failed: "+err.Error())
 		return
 	}
 	quarantined := workloadState.Status == "quarantined"
+
+	// Ask OPA for authorization decision based on the caller’s SPIFFE ID, workload name, HTTP method, path, and quarantine status.
 	allowed, err := g.authorize(r.Context(), callerID, workloadName, r.Method, r.URL.Path, quarantined)
 	if err != nil {
 		platform.WriteError(w, http.StatusServiceUnavailable, "OPA authorization failed: "+err.Error())
 		return
 	}
 
+	// Create trace-hop evidence for the mTLS authentication and OPA authorization steps.
 	inboundTLS := platform.TLSMetadataFromState(r.TLS, callerID)
 	inboundTLS.SourceSPIFFEID = callerID
 	inboundTLS.PeerSPIFFEID = gatewayID
@@ -190,9 +236,12 @@ func (g *gateway) handleBusiness(w http.ResponseWriter, r *http.Request) {
 	reason := "OPA policy denied the authenticated identity, method and path"
 	statusCode := http.StatusForbidden
 	responseBody := []byte(nil)
+
 	if quarantined {
 		reason = "workload is quarantined"
 	}
+
+	// Forward allowed requests.
 	if allowed {
 		decision = "allow"
 		reason = "OPA policy allowed the authenticated identity, method and path"
@@ -228,6 +277,7 @@ func (g *gateway) handleBusiness(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Create the security event.
 	event := platform.DecisionEvent{
 		TraceID:        traceID,
 		GatewayRequest: gatewayRequestID,
@@ -243,6 +293,8 @@ func (g *gateway) handleBusiness(w http.ResponseWriter, r *http.Request) {
 		RequestBody:    truncate(string(body), 2048),
 		ResponseBody:   truncate(string(responseBody), 4096),
 	}
+
+	// Publish the event to the Control Plane.
 	stored, publishErr := g.publishEvent(r.Context(), event, identity.SPIFFEID)
 	w.Header().Set("X-ContainGo-Trace-ID", traceID)
 	w.Header().Set("X-ContainGo-Request-ID", gatewayRequestID)
@@ -275,6 +327,7 @@ func (g *gateway) resolveWorkload(ctx context.Context, spiffeID, sourceID string
 	return workload, nil
 }
 
+// This sends an authorization request to OPA.
 func (g *gateway) authorize(ctx context.Context, spiffeID, workload, method, path string, quarantined bool) (bool, error) {
 	payload := map[string]interface{}{
 		"input": map[string]interface{}{
@@ -326,10 +379,13 @@ func (g *gateway) publishEvent(ctx context.Context, event platform.DecisionEvent
 	return stored, nil
 }
 
+// This is HTTP middleware.
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		started := time.Now()
-		next.ServeHTTP(w, r)
+		started := time.Now() // Recording start time.
+		next.ServeHTTP(w, r)  // calling the actual handler.
+
+		// Logging after completion.
 		log.Printf("component=api-gateway method=%s path=%s peer=%s trace=%s duration=%s", r.Method, r.URL.Path, platform.PeerSPIFFEID(r), r.Header.Get("X-ContainGo-Trace-ID"), time.Since(started))
 	})
 }
